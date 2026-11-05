@@ -337,8 +337,18 @@ function renderHud() {
   ctx.textAlign = 'left';
   ctx.fillText(`Puntos: ${state.score}`, 16, HUD_HEIGHT / 2);
 
+  // Vidas: una bola por cada vida restante, alineadas a la derecha
+  const lifeSize = BALL.size;
+  const lifeGap = 6;
+  const lifeY = (HUD_HEIGHT - lifeSize) / 2;
+  let lifeX = WIDTH - 16 - lifeSize;
+  for (let i = 0; i < state.lives; i++) {
+    drawSprite(ctx, 'ball', lifeX, lifeY, lifeSize, lifeSize);
+    lifeX -= lifeSize + lifeGap;
+  }
+
   ctx.textAlign = 'right';
-  ctx.fillText(`Vidas: ${state.lives}`, WIDTH - 16, HUD_HEIGHT / 2);
+  ctx.fillText('Vidas:', lifeX + lifeSize, HUD_HEIGHT / 2);
 
   // Línea que separa el HUD del área de juego
   ctx.fillStyle = '#444';
