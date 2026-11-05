@@ -23,6 +23,8 @@ const ROWS = [                  // de arriba abajo
 
 const START_LIVES = 3;
 
+const EXPLOSION_TOTAL = EXPLOSION_DURATION * 4;   // 600 ms: 4 frames de EXPLOSION_DURATION
+
 // Estado mutable
 const state = {
   screen: 'start',              // 'start' | 'serve' | 'playing' | 'paused' | 'gameover' | 'win'
@@ -31,6 +33,7 @@ const state = {
   paddle: { x: 340 },           // x = borde izquierdo
   ball: { x: 0, y: 0, vx: 0, vy: 0 },   // x,y = esquina superior izquierda
   bricks: [],                   // { x, y, color, points, alive }
+  explosions: [],               // { x, y, color, elapsed } — elapsed en ms
   input: { left: false, right: false, mouseX: null },
 };
 
@@ -77,6 +80,7 @@ function resetGame() {
   state.lives = START_LIVES;
   state.paddle.x = (WIDTH - PADDLE.w) / 2;
   buildBricks();
+  state.explosions = [];
   attachBallToPaddle();
   state.screen = 'serve';
 }
@@ -226,7 +230,7 @@ function collideBallBricks() {
 
     brick.alive = false;
     state.score += brick.points;
-    if (state.bricks.every((b) => !b.alive)) state.screen = 'win';
+    state.explosions.push({ x: brick.x, y: brick.y, color: brick.color, elapsed: 0 });
     return;
   }
 }
@@ -263,6 +267,17 @@ function updateBall(dt) {
   }
 }
 
+// Nivel despejado: no queda ningún bloque vivo (las explosiones no cuentan)
+function isLevelCleared() {
+  return state.bricks.every((b) => !b.alive);
+}
+
+// Avanza las explosiones y elimina las terminadas (antes de dibujar, así el frame nunca llega a 4)
+function updateExplosions(dt) {
+  for (const explosion of state.explosions) explosion.elapsed += dt * 1000;
+  state.explosions = state.explosions.filter((e) => e.elapsed < EXPLOSION_TOTAL);
+}
+
 function update(dt) {
   const screen = state.screen;
 
@@ -276,8 +291,19 @@ function update(dt) {
 
   if (screen === 'start' || screen === 'serve') {
     attachBallToPaddle();
-  } else if (screen === 'playing') {
+  } else if (screen === 'playing' && !isLevelCleared()) {
+    // Con el nivel despejado la pelota queda parada mientras termina la última explosión
     updateBall(dt);
+  }
+
+  // Las explosiones avanzan en juego y en saque; en pausa y fin de juego se congelan
+  if (screen === 'playing' || screen === 'serve') {
+    updateExplosions(dt);
+  }
+
+  // Victoria cuando el nivel está despejado y ya no queda ninguna explosión
+  if (screen === 'playing' && isLevelCleared() && state.explosions.length === 0) {
+    state.screen = 'win';
   }
 }
 
@@ -289,8 +315,13 @@ function render() {
     if (brick.alive) drawSprite(ctx, 'block_' + brick.color, brick.x, brick.y, BRICK.w, BRICK.h);
   }
 
+  renderExplosions();
+
   drawSprite(ctx, 'paddle', state.paddle.x, PADDLE.y, PADDLE.w, PADDLE.h);
-  drawSprite(ctx, 'ball', state.ball.x, state.ball.y, BALL.size, BALL.size);
+  // Con el nivel despejado la pelota se oculta
+  if (!isLevelCleared()) {
+    drawSprite(ctx, 'ball', state.ball.x, state.ball.y, BALL.size, BALL.size);
+  }
 
   renderHud();
 
@@ -307,6 +338,14 @@ function render() {
     case 'win':
       renderOverlay('¡Ganaste!', `Puntuación final: ${state.score}`, 'Pulsa Espacio para reiniciar');
       break;
+  }
+}
+
+// Frame actual (0..3) de cada explosión, al tamaño del bloque roto
+function renderExplosions() {
+  for (const explosion of state.explosions) {
+    const frame = Math.floor(explosion.elapsed / EXPLOSION_DURATION);
+    drawFrame(ctx, EXPLOSION_FRAMES[explosion.color][frame], explosion.x, explosion.y, BRICK.w, BRICK.h);
   }
 }
 
