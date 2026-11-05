@@ -1,6 +1,6 @@
 # SPEC 03 — Sonidos y sistema de niveles
 
-> **Estado:** Borrador
+> **Estado:** Aprobado
 > **Depende de:** SPEC 01, SPEC 02
 > **Fecha:** 2026-11-05
 > **Objetivo:** Añadir sonidos de rebote y de rotura de bloques, con silencio por tecla M, y una secuencia de 5 niveles con layouts distintos.
