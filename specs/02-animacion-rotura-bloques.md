@@ -1,6 +1,6 @@
 # SPEC 02 — Animación de rotura de bloques
 
-> **Estado:** Borrador
+> **Estado:** Aprobado
 > **Depende de:** SPEC 01
 > **Fecha:** 2026-11-05
 > **Objetivo:** Reproducir la animación de explosión de 4 frames del spritesheet en el lugar de cada bloque que se rompe.
