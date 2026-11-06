@@ -12,14 +12,15 @@ const BRICK = { w: 72, h: 24, gap: 4, cols: 10, offsetTop: 80 };
 // offsetLeft centra la rejilla en el canvas
 const BRICK_OFFSET_LEFT = (WIDTH - (BRICK.cols * BRICK.w + (BRICK.cols - 1) * BRICK.gap)) / 2;
 
-const ROWS = [                  // de arriba abajo
-  { color: 'red',     points: 60 },
-  { color: 'yellow',  points: 50 },
-  { color: 'cyan',    points: 40 },
-  { color: 'magenta', points: 30 },
-  { color: 'hotpink', points: 20 },
-  { color: 'green',   points: 10 },
-];
+// Puntos por color de bloque (los layouts están en levels.js)
+const BRICK_POINTS = {
+  red: 60,
+  yellow: 50,
+  cyan: 40,
+  magenta: 30,
+  hotpink: 20,
+  green: 10,
+};
 
 const START_LIVES = 3;
 
@@ -27,9 +28,11 @@ const EXPLOSION_TOTAL = EXPLOSION_DURATION * 4;   // 600 ms: 4 frames de EXPLOSI
 
 // Estado mutable
 const state = {
-  screen: 'start',              // 'start' | 'serve' | 'playing' | 'paused' | 'gameover' | 'win'
+  screen: 'start',              // 'start' | 'serve' | 'playing' | 'paused' | 'levelclear' | 'gameover' | 'win'
   score: 0,
   lives: START_LIVES,
+  level: 1,                     // 1..LEVELS.length; layout activo: LEVELS[state.level - 1]
+  muted: false,                 // tecla M; no se reinicia ni se guarda entre sesiones
   paddle: { x: 340 },           // x = borde izquierdo
   ball: { x: 0, y: 0, vx: 0, vy: 0 },   // x,y = esquina superior izquierda
   bricks: [],                   // { x, y, color, points, alive }
@@ -41,6 +44,27 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 let lastTime = null;
+
+// Audio: cada sonido se precarga una vez y cada reproducción usa un clon,
+// así varios sonidos seguidos se solapan sin cortarse.
+const SOUND_FILES = {
+  bounce: 'assets/sounds/ball-bounce.mp3',
+  break: 'assets/sounds/break-sound.mp3',
+};
+
+const sounds = {};
+for (const [name, src] of Object.entries(SOUND_FILES)) {
+  sounds[name] = new Audio(src);
+  sounds[name].preload = 'auto';
+}
+
+// Un fallo de carga o de reproducción se ignora: el juego sigue sin ese sonido
+function playSound(name) {
+  if (state.muted) return;
+  const sound = sounds[name].cloneNode();
+  const playing = sound.play();
+  if (playing) playing.catch(() => {});
+}
 
 // Entrada
 const KEYS_LEFT = ['ArrowLeft', 'KeyA'];
@@ -61,11 +85,24 @@ function onAction() {
     case 'serve':
       launchBall();
       break;
+    case 'levelclear':
+      nextLevel();
+      break;
     case 'gameover':
     case 'win':
       resetGame();
       break;
   }
+}
+
+// Paso al siguiente nivel: se conservan puntos y vidas
+function nextLevel() {
+  state.level += 1;
+  buildBricks();
+  state.explosions = [];
+  state.paddle.x = (WIDTH - PADDLE.w) / 2;
+  attachBallToPaddle();
+  state.screen = 'serve';
 }
 
 // P o Esc: playing ⇄ paused
@@ -74,10 +111,11 @@ function togglePause() {
   else if (state.screen === 'paused') state.screen = 'playing';
 }
 
-// Reinicio completo: 3 vidas, 0 puntos, 60 bloques, pelota en la pala
+// Reinicio completo: nivel 1, 3 vidas, 0 puntos, pelota en la pala
 function resetGame() {
   state.score = 0;
   state.lives = START_LIVES;
+  state.level = 1;
   state.paddle.x = (WIDTH - PADDLE.w) / 2;
   buildBricks();
   state.explosions = [];
@@ -95,6 +133,12 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyP' || e.code === 'Escape') {
     e.preventDefault();
     if (!e.repeat) togglePause();
+    return;
+  }
+  // M: activa o silencia el sonido en cualquier pantalla
+  if (e.code === 'KeyM') {
+    e.preventDefault();
+    if (!e.repeat) state.muted = !state.muted;
   }
 });
 
@@ -170,18 +214,28 @@ function collideBallPaddle() {
   ball.vx = BALL.speed * Math.sin(angle);
   ball.vy = -BALL.speed * Math.cos(angle);
   ball.y = PADDLE.y - BALL.size;   // sacarla de la pala
+  playSound('bounce');
 }
 
-// Bloques
+// Bloques: se construyen desde el layout del nivel actual.
+// '.' es un hueco; un carácter desconocido no crea bloque y avisa por consola.
 function buildBricks() {
   const bricks = [];
-  ROWS.forEach((row, r) => {
-    for (let c = 0; c < BRICK.cols; c++) {
+  const layout = LEVELS[state.level - 1];
+  layout.forEach((row, r) => {
+    for (let c = 0; c < row.length; c++) {
+      const code = row[c];
+      if (code === '.') continue;
+      const color = BRICK_CODES[code];
+      if (!color) {
+        console.warn(`Carácter de bloque desconocido '${code}' en nivel ${state.level}, fila ${r}, columna ${c}`);
+        continue;
+      }
       bricks.push({
         x: BRICK_OFFSET_LEFT + c * (BRICK.w + BRICK.gap),
         y: BRICK.offsetTop + r * (BRICK.h + BRICK.gap),
-        color: row.color,
-        points: row.points,
+        color,
+        points: BRICK_POINTS[color],
         alive: true,
       });
     }
@@ -231,6 +285,7 @@ function collideBallBricks() {
     brick.alive = false;
     state.score += brick.points;
     state.explosions.push({ x: brick.x, y: brick.y, color: brick.color, elapsed: 0 });
+    playSound('break');
     return;
   }
 }
@@ -245,16 +300,19 @@ function updateBall(dt) {
   if (ball.x < 0) {
     ball.x = -ball.x;
     ball.vx = Math.abs(ball.vx);
+    playSound('bounce');
   }
   // Pared derecha
   if (ball.x + BALL.size > WIDTH) {
     ball.x = 2 * (WIDTH - BALL.size) - ball.x;
     ball.vx = -Math.abs(ball.vx);
+    playSound('bounce');
   }
   // Pared superior (borde inferior de la franja del HUD)
   if (ball.y < HUD_HEIGHT) {
     ball.y = 2 * HUD_HEIGHT - ball.y;
     ball.vy = Math.abs(ball.vy);
+    playSound('bounce');
   }
 
   collideBallPaddle();
@@ -301,9 +359,9 @@ function update(dt) {
     updateExplosions(dt);
   }
 
-  // Victoria cuando el nivel está despejado y ya no queda ninguna explosión
+  // Nivel despejado y sin explosiones: siguiente nivel o victoria tras el último
   if (screen === 'playing' && isLevelCleared() && state.explosions.length === 0) {
-    state.screen = 'win';
+    state.screen = state.level < LEVELS.length ? 'levelclear' : 'win';
   }
 }
 
@@ -331,6 +389,9 @@ function render() {
       break;
     case 'paused':
       renderOverlay('Pausa', 'Pulsa P o Esc para continuar');
+      break;
+    case 'levelclear':
+      renderOverlay(`¡Nivel ${state.level} superado!`, `Puntos: ${state.score}`, 'Pulsa Espacio para continuar');
       break;
     case 'gameover':
       renderOverlay('Fin del juego', `Puntuación final: ${state.score}`, 'Pulsa Espacio para reiniciar');
@@ -375,6 +436,11 @@ function renderHud() {
 
   ctx.textAlign = 'left';
   ctx.fillText(`Puntos: ${state.score}`, 16, HUD_HEIGHT / 2);
+
+  // Nivel actual, centrado; con silencio activo se añade el indicador
+  ctx.textAlign = 'center';
+  const levelText = state.muted ? `Nivel ${state.level} · Sin sonido` : `Nivel ${state.level}`;
+  ctx.fillText(levelText, WIDTH / 2, HUD_HEIGHT / 2);
 
   // Vidas: una bola por cada vida restante, alineadas a la derecha
   const lifeSize = BALL.size;
