@@ -4,11 +4,11 @@ const HEIGHT = 600;
 const HUD_HEIGHT = 40;          // franja superior reservada al HUD
 const MAX_DT = 1 / 30;          // límite de dt en segundos
 
-const PADDLE = { w: 120, h: 14, y: 560, speed: 480 };    // speed en px/s
+const PADDLE = { w: 60, h: 14, y: 560, speed: 480 };    // speed en px/s
 const BALL = { size: 16, speed: 360 };                     // speed en px/s, constante
 const MAX_BOUNCE_ANGLE = Math.PI / 3;                      // 60°
 
-const BRICK = { w: 72, h: 24, gap: 4, cols: 10, offsetTop: 80 };
+const BRICK = { w: 75, h: 30, gap: 4, cols: 10, offsetTop: 80 };
 // offsetLeft centra la rejilla en el canvas
 const BRICK_OFFSET_LEFT = (WIDTH - (BRICK.cols * BRICK.w + (BRICK.cols - 1) * BRICK.gap)) / 2;
 
